@@ -108,25 +108,33 @@
     | Var a -> if a = var_name then repl else Var a
     | Num a ->  Num a
     | Bool a ->  Bool a
-    | Unop (op, ex) -> Unop(op, (subst var_name repl ex))
-    | Binop (op, ex1, ex2) -> Binop(op, (subst var_name repl ex1), (subst var_name repl ex2))
-    | Conditional (ex1, ex2, ex3) -> Conditional((subst var_name repl ex1), (subst var_name repl ex2), (subst var_name repl ex3))
-    | Fun (v, ex) -> if v = var_name then exp 
-                     else if SS.mem v (free_vars repl) then 
-                       let newVar = new_varname () in
-                       Fun(newVar, (subst v (Var(newVar)) (subst var_name repl ex)))
-                         (*Fun(newVar, subst var_name repl (subst v (Var newVar) exp))*)
-                     else Fun(var_name, (subst var_name repl ex))
-    | Let (v, ex1, ex2) -> if v = var_name then Let(v, (subst var_name repl ex1), ex2) 
-                          else if SS.mem v (free_vars repl) then
-                            let newVar = new_varname () in
-                              Let(newVar, (subst var_name repl ex1), (subst v (Var newVar) (subst var_name repl ex2)))
-                          else Let(v, (subst var_name repl ex1), (subst var_name repl ex2))
-    | Letrec (v, ex1, ex2) -> if v = var_name then Letrec(v, (subst var_name repl ex1), ex2) 
-                              else if SS.mem v (free_vars repl) then
-                                let newVar = new_varname () in
-                                  Letrec(newVar, (subst var_name repl ex1), (subst v (Var newVar) (subst var_name repl ex2)))
-                              else Letrec(v, (subst var_name repl ex1), (subst var_name repl ex2))
+    | Unop (op, ex) -> 
+      Unop(op, (subst var_name repl ex))
+    | Binop (op, ex1, ex2) ->
+      Binop(op, (subst var_name repl ex1), (subst var_name repl ex2))
+    | Conditional (ex1, ex2, ex3) -> 
+      Conditional((subst var_name repl ex1), (subst var_name repl ex2), 
+                  (subst var_name repl ex3))
+    | Fun (v, ex) -> 
+      if v = var_name then exp 
+      else if SS.mem v (free_vars repl) then 
+        let newVar = new_varname () in
+        Fun(newVar, (subst v (Var(newVar)) (subst var_name repl ex)))
+        else Fun(var_name, (subst var_name repl ex))
+    | Let (v, ex1, ex2) -> 
+      if v = var_name then Let(v, (subst var_name repl ex1), ex2) 
+      else if SS.mem v (free_vars repl) then
+        let newVar = new_varname () in
+        Let(newVar, (subst var_name repl ex1), (subst v (Var newVar) 
+           (subst var_name repl ex2)))
+      else Let(v, (subst var_name repl ex1), (subst var_name repl ex2))
+    | Letrec (v, ex1, ex2) -> 
+      if v = var_name then Letrec(v, (subst var_name repl ex1), ex2) 
+      else if SS.mem v (free_vars repl) then
+        let newVar = new_varname () in
+        Letrec(newVar, (subst var_name repl ex1), (subst v (Var newVar) 
+              (subst var_name repl ex2)))
+      else Letrec(v, (subst var_name repl ex1), (subst var_name repl ex2))
     | Raise -> Raise
     | Unassigned -> Unassigned 
     | App (ex1, ex2) -> App(subst var_name repl ex1, subst var_name repl ex2)
@@ -145,21 +153,29 @@
     | Num a ->  string_of_int a
     | Bool a ->  string_of_bool a
     | Unop (op, ex) -> (match op with
-                    | Negate -> "(-)"  ^ (exp_to_concrete_string ex))
-    | Binop (op, ex1, ex2) -> let exp1, exp2 = (exp_to_concrete_string ex1), (exp_to_concrete_string ex2) in 
-                            (match op with
-                            | Plus -> exp1 ^ "(+)" ^ exp2
-                            | Minus -> exp1 ^ "(-)" ^ exp2
-                            | Times -> exp1 ^ "(*)" ^ exp2
-                            | Equals -> exp1 ^ "(=)" ^ exp2
-                            | LessThan -> exp1 ^ "(<)" ^ exp2)
-    | Conditional (ex1, ex2, ex3) -> (exp_to_concrete_string ex1) ^ (exp_to_concrete_string ex2) ^ (exp_to_concrete_string ex3)
+                    | Negate -> "(-)"  ^ 
+                        (exp_to_concrete_string ex))
+    | Binop (op, ex1, ex2) -> 
+      let exp1, exp2 = (exp_to_concrete_string ex1), 
+                       (exp_to_concrete_string ex2) in 
+       (match op with
+         | Plus -> exp1 ^ "(+)" ^ exp2
+         | Minus -> exp1 ^ "(-)" ^ exp2
+         | Times -> exp1 ^ "(*)" ^ exp2
+         | Equals -> exp1 ^ "(=)" ^ exp2
+         | LessThan -> exp1 ^ "(<)" ^ exp2)
+    | Conditional (ex1, ex2, ex3) -> (exp_to_concrete_string ex1) ^ 
+                                     (exp_to_concrete_string ex2) ^ 
+                                     (exp_to_concrete_string ex3)
     | Fun (v, ex) -> v ^ (exp_to_concrete_string ex)
-    | Let (v, ex1, ex2) -> "Let " ^ (exp_to_concrete_string ex1) ^ " = " ^ (exp_to_concrete_string ex2)
-    | Letrec (v, ex1, ex2) -> "Letrec " ^ v ^ "=" ^(exp_to_concrete_string ex1) ^ " -> " ^ (exp_to_concrete_string ex2)
+    | Let (v, ex1, ex2) -> "Let " ^ (exp_to_concrete_string ex1) 
+                            ^ " = " ^ (exp_to_concrete_string ex2)
+    | Letrec (v, ex1, ex2) -> "Letrec " ^ v ^ "=" ^(exp_to_concrete_string ex1) 
+                              ^ " -> " ^ (exp_to_concrete_string ex2)
     | Raise -> "Raise"
     | Unassigned -> "Unnasigned"
-    | App (ex1, ex2) -> (exp_to_concrete_string ex1) ^ " " ^ (exp_to_concrete_string ex2)
+    | App (ex1, ex2) -> (exp_to_concrete_string ex1) ^ " " ^ 
+                        (exp_to_concrete_string ex2)
   ;;
   
   (* exp_to_abstract_string : expr -> string
