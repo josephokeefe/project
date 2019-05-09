@@ -45,26 +45,37 @@ module Env : Env_type =
     (* Creates a closure from an expression and the environment it's
        defined in *)
     let close (exp : expr) (env : env) : value =
-      failwith "close not implemented" ;;
+      Closure (exp, env) ;;
 
     (* Looks up the value of a variable in the environment *)
     let lookup (env : env) (varname : varid) : value =
-      failwith "lookup not implemented" ;;
+      !(List.assoc varname env) ;;
 
     (* Returns a new environment just like env except that it maps the
        variable varid to loc *)
     let extend (env : env) (varname : varid) (loc : value ref) : env =
-      failwith "extend not implemented" ;;
+      (varname, loc) :: (List.remove_assoc varname env) ;;
 
     (* Returns a printable string representation of a value; the flag
        printenvp determines whether to include the environment in the
        string representation when called on a closure *)
-    let value_to_string ?(printenvp : bool = true) (v : value) : string =
-      failwith "value_to_string not implemented" ;;
+    let rec value_to_string ?(printenvp : bool = true) (v : value) : string =
+      match v with
+      | Val exp -> exp_to_concrete_string exp
+      | Closure (ex, env) ->
+            if printenvp then
+            ("[ " ^ env_to_string env ^ " |- " ^ exp_to_concrete_string ex ^ " ]")
+            else "[ " ^ exp_to_concrete_string ex ^ " ]"
 
     (* Returns a printable string representation of an environment *)
-    let env_to_string (env : env) : string =
-      failwith "env_to_string not implemented" ;;
+    and env_to_string (env : env) : string =
+      let rec helper (env' : env) : string =
+        match env' with
+        | [] -> ""
+        | [(vr, vl)] -> vr ^ " -> " ^ value_to_string !vl
+        | (vr, vl) :: tl -> 
+              vr ^ " -> " ^ value_to_string !vl ^ ", " ^ helper tl
+              in "{" ^ helper env ^ "}" ;;
   end
 ;;
 
@@ -92,27 +103,121 @@ module Env : Env_type =
 (* The TRIVIAL EVALUATOR, which leaves the expression to be evaluated
    essentially unchanged, just converted to a value for consistency
    with the signature of the evaluators. *)
+
+open Env;;
    
 let eval_t (exp : expr) (_env : Env.env) : Env.value =
   (* coerce the expr, unchanged, into a value *)
   Env.Val exp ;;
 
 (* The SUBSTITUTION MODEL evaluator -- to be completed *)
-   
-let eval_s (_exp : expr) (_env : Env.env) : Env.value =
-  failwith "eval_s not implemented" ;;
      
 (* The DYNAMICALLY-SCOPED ENVIRONMENT MODEL evaluator -- to be
    completed *)
    
-let eval_d (_exp : expr) (_env : Env.env) : Env.value =
-  failwith "eval_d not implemented" ;;
+   let rec eval_s (exp : expr) (env : Env.env) : Env.value =
+    match exp with
+      | Var a -> raise (EvalError a)
+      | Num a ->   Val (Num a)
+      | Bool a ->  Val (Bool a)
+      | Unop (op, ex) -> (match op with
+                         | Negate -> eval_s (Binop(Times, Num (-1), ex)) env)
+      | Binop (op, ex1, ex2) -> (match op, eval_s ex1 env, eval_s ex2 env with
+                                | Plus, Val (Num n1), Val (Num n2) -> Val (Num (n1 + n2))
+                                | Minus, Val (Num n1), Val (Num n2) -> Val (Num (n1 - n2))
+                                | Times, Val (Num n1), Val (Num n2) -> Val (Num (n1 * n2))
+                                | Equals, Val (Num n1), Val (Num n2) -> Val (Bool (n1 = n2))
+                                | LessThan, Val (Num n1), Val (Num n2) -> Val (Bool (n1 < n2))
+                                | _, _, _ -> raise (EvalError "Error"))
+      | Conditional (ex1, ex2, ex3) -> (match eval_s ex1 env with
+                                        | Val (Bool cond) -> if cond then eval_s ex2 env else eval_s ex3 env
+                                        | _ -> raise (EvalError "Error"))                                    
+      | Fun (v, ex) -> Val (Fun(v, ex))
+      | Let (v, ex1, ex2) -> (match eval_s ex1 env with
+                             | Val ex -> eval_s (Expr.subst v ex ex2) env
+                             | _ -> raise (EvalError "Error")) 
+      | Letrec (v, ex1, ex2) -> (match eval_s ex1 env with
+                                | Val ex -> eval_s (subst v (subst v (Letrec (v, ex, Var v)) ex) ex2) env
+                                | _ -> raise (EvalError "Error")) 
+      | Raise -> raise (EvalError "Error")
+      | Unassigned -> raise (EvalError "Unassigned")
+      | App (ex1, ex2) -> (match eval_s ex1 env with
+                          | Val Fun(v, ex) -> (match (eval_s ex2 env) with
+                                              | Val e -> eval_s (subst v e ex) env
+                                              | _ -> raise (EvalError "Error"))                                 
+                          | _ -> raise (EvalError "Not a function"))
+;;
+
+let rec eval_d (exp : expr) (env : Env.env) : Env.value =
+  match exp with
+    | Var a -> 
+      (match (Env.lookup env a) with
+      | Val num -> eval_d num env
+      | _ -> raise (EvalError "Error"))
+    | Num a ->   Val (Num a)
+    | Bool a ->  Val (Bool a)
+    | Unop (op, ex) -> (match op with
+                       | Negate -> eval_d (Binop(Times, Num (-1), ex)) env)
+    | Binop (op, ex1, ex2) -> (match op, eval_d ex1 env, eval_d ex2 env with
+                              | Plus, Val (Num n1), Val (Num n2) -> Val (Num (n1 + n2))
+                              | Minus, Val (Num n1), Val (Num n2) -> Val (Num (n1 - n2))
+                              | Times, Val (Num n1), Val (Num n2) -> Val (Num (n1 * n2))
+                              | Equals, Val (Num n1), Val (Num n2) -> Val (Bool (n1 = n2))
+                              | LessThan, Val (Num n1), Val (Num n2) -> Val (Bool (n1 < n2))
+                              | _, _, _ -> raise (EvalError "Error"))
+    | Conditional (ex1, ex2, ex3) -> (match eval_d ex1 env with
+                                      | Val (Bool cond) -> if cond then eval_d ex2 env else eval_d ex3 env
+                                      | _ -> raise (EvalError "Error"))                                    
+    | Fun (v, ex) -> Val (Fun(v, ex))
+    | Let (v, ex1, ex2) -> eval_d ex2 (extend env v (ref (eval_d ex1 env)))
+    | Letrec (v, ex1, ex2) ->
+        let env2 = extend env v (ref (Val (Letrec(v, ex1, ex1)) )) in
+        eval_d ex2 (extend env v (ref (eval_d ex1 env2)))
+    | Raise -> raise (EvalError "Error")
+    | Unassigned -> raise (EvalError "Unassigned")
+    | App (ex1, ex2) -> (match eval_d ex1 env with
+                        | Val Fun(v, ex) -> eval_d ex (extend env v (ref (eval_d ex2 env)))                               
+                        | _ -> raise (EvalError "Not a function"))
+                        
+    ;;
        
 (* The LEXICALLY-SCOPED ENVIRONMENT MODEL evaluator -- optionally
    completed as (part of) your extension *)
    
-let eval_l (_exp : expr) (_env : Env.env) : Env.value =
-  failwith "eval_l not implemented" ;;
+   let rec eval_l (exp : expr) (env : Env.env) : Env.value =
+    match exp with
+      | Var a -> 
+        (match (Env.lookup env a) with
+        | Closure (num, en) -> (match (eval_l num env) with
+                               | Val exp -> Closure (exp, en)
+                               | _ -> raise (EvalError "Error"))
+        | Val num -> eval_l num env)
+      | Num a ->   Val (Num a)
+      | Bool a ->  Val (Bool a)
+      | Unop (op, ex) -> (match op with
+                         | Negate -> eval_l (Binop(Times, Num (-1), ex)) env)
+      | Binop (op, ex1, ex2) -> (match op, eval_l ex1 env, eval_l ex2 env with
+                                | Plus, Val (Num n1), Val (Num n2) -> Val (Num (n1 + n2))
+                                | Minus, Val (Num n1), Val (Num n2) -> Val (Num (n1 - n2))
+                                | Times, Val (Num n1), Val (Num n2) -> Val (Num (n1 * n2))
+                                | Equals, Val (Num n1), Val (Num n2) -> Val (Bool (n1 = n2))
+                                | LessThan, Val (Num n1), Val (Num n2) -> Val (Bool (n1 < n2))
+                                | _, _, _ -> raise (EvalError "Error"))
+      | Conditional (ex1, ex2, ex3) -> (match eval_l ex1 env with
+                                        | Val (Bool cond) -> if cond then eval_l ex2 env else eval_l ex3 env
+                                        | _ -> raise (EvalError "Error"))                                    
+      | Fun (v, ex) -> Closure (Fun(v, ex), env)
+      | Let (v, ex1, ex2) -> eval_l ex2 (extend env v (ref (eval_l ex1 env)))
+      | Letrec (v, ex1, ex2) ->
+          let env2 = extend env v (ref (Val (Letrec(v, ex1, ex1)) )) in
+          eval_l ex2 (extend env v (ref (eval_l ex1 env2)))
+      | Raise -> raise (EvalError "Error")
+      | Unassigned -> raise (EvalError "Unassigned")
+      | App (ex1, ex2) -> (match eval_l ex1 env with
+                          | Closure (Fun(v, ex), env2) -> eval_l ex (extend env2 v (ref (eval_l ex2 env)))                               
+                          | _ -> raise (EvalError "Not a function"))
+                          
+  ;;
 
 (* The EXTENDED evaluator -- if you want, you can provide your
    extension as a separate evaluator, or if it is type- and
@@ -130,4 +235,4 @@ let eval_e _ =
    above, not the evaluate function, so it doesn't matter how it's set
    when you submit your solution.) *)
    
-let evaluate = eval_t ;;
+let evaluate = eval_d ;;
